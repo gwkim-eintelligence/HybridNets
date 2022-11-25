@@ -13,6 +13,8 @@ from torchvision import transforms
 import argparse
 from utils.constants import *
 
+from sort.sort import Sort
+
 parser = argparse.ArgumentParser('HybridNets: End-to-End Perception Network - DatVu')
 parser.add_argument('-p', '--project', type=str, default='bdd100k', help='Project file that contains parameters')
 parser.add_argument('-bb', '--backbone', type=str, help='Use timm to create another backbone replacing efficientnet. '
@@ -94,6 +96,8 @@ model.load_state_dict(weight.get('model', weight))
 model.requires_grad_(False)
 model.eval()
 
+mot_tracker = Sort()
+
 if use_cuda:
     model = model.cuda()
     if use_float16:
@@ -106,8 +110,8 @@ for video_index, video_src in enumerate(video_srcs):
     cap = cv2.VideoCapture(video_src)
     # Define the codec and create VideoWriter object
     fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-    out_stream = cv2.VideoWriter(video_out, fourcc, 30.0,
-                                 (int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)), int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))))
+    # out_stream = cv2.VideoWriter(video_out, fourcc, 30.0,
+    #                              (int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)), int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))))
     t1 = time.time()
     frame_count = 0
     while True:
@@ -120,6 +124,7 @@ for video_index, video_src in enumerate(video_srcs):
         r = resized_shape / max(h0, w0)  # resize image to img_size
         input_img = cv2.resize(frame, (int(w0 * r), int(h0 * r)), interpolation=cv2.INTER_AREA)
         h, w = input_img.shape[:2]
+        # print(h,w,h0,w0)
 
         (input_img, _), ratio, pad = letterbox((input_img, None), auto=False,
                                                   scaleup=True)
@@ -164,14 +169,36 @@ for video_index, video_src in enumerate(video_srcs):
             out = out[0]
             out['rois'] = scale_coords(frame[:2], out['rois'], shapes[0], shapes[1])
 
-            for j in range(len(out['rois'])):
-                x1, y1, x2, y2 = out['rois'][j].astype(int)
-                obj = obj_list[out['class_ids'][j]]
-                score = float(out['scores'][j])
-                plot_one_box(frame, [x1, y1, x2, y2], label=obj, score=score,
-                             color=color_list[get_index_label(obj, obj_list)])
-            out_stream.write(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
+            print(out['rois'])
+            # print(out['scores'].reshape(-1,1))
+            # print(out['class_ids'].reshape(-1,1))
+            # print(np.c_[out['rois'], out['scores'].reshape(-1,1), out['class_ids'].reshape(-1,1)])
+
+            # #opencv show
+            # for j in range(len(out['rois'])):
+            #     x1, y1, x2, y2 = out['rois'][j].astype(int)
+            #     obj = obj_list[out['class_ids'][j]]
+            #     score = float(out['scores'][j])
+            #     class_id = out['class_ids'][j]
+            #     # print(x1, y1, x2, y2, score, class_id, obj)
+            #     plot_one_box(frame, [x1, y1, x2, y2], label=obj, score=score,
+            #                  color=color_list[get_index_label(obj, obj_list)])
+
+            # out_stream.write(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
             frame_count += 1
+        # print("show")
+        detections = np.c_[out['rois'], out['scores'].reshape(-1, 1), out['class_ids'].reshape(-1, 1)] #float
+        if detections is not None:
+            tracked_objects = mot_tracker.update(detections)
+            for x1, y1, x2, y2, obj_id, cls_pred in tracked_objects:
+                label = obj_list[int(cls_pred)]
+                color = color_list[int(obj_id)]
+                # print(obj_id, label)
+                plot_one_box(frame, [x1, y1, x2, y2], label=label, score=obj_id, color=color)
+
+
+        cv2.imshow("show", cv2.resize(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB), (w, h)))
+        cv2.waitKey(0)
 
     t2 = time.time()
     print("video: {}".format(video_src))
@@ -180,4 +207,4 @@ for video_index, video_src in enumerate(video_srcs):
     print("fps: {}".format(frame_count/(t2-t1)))
 
     cap.release()
-    out_stream.release()
+    # out_stream.release()

@@ -19,6 +19,8 @@ obj_list: ['car']
 obj_combine: ['car', 'bus', 'truck', 'train']  # if single class, combine these classes into 1 single class in obj_list
                                                # leave as empty list ([]) to not combine classes
 
+color_list: [(0,255,0)]
+
 
 # if detect traffic light by color, please edit 'traffic light' to 'tl_green', 'tl_red', 'tl_yellow', 'tl_none'
 # TODO: automatic this step
